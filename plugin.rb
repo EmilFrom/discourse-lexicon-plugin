@@ -53,7 +53,11 @@ after_initialize do
     User.class_eval { has_many :expo_pn_subscriptions, dependent: :delete_all }
 
     DiscourseEvent.on(:before_create_notification) do |user, type, post, opts|
+      Rails.logger.warn("[Lexicon Plugin] before_create_notification fired - User: #{user.username}, Type: #{type}")
+      
       if user.expo_pn_subscriptions.exists?
+        Rails.logger.warn("[Lexicon Plugin] User has expo subscription, enqueuing push notification")
+        
         payload = {
           notification_type: type,
           post_number: post.post_number,
@@ -81,6 +85,7 @@ after_initialize do
 
     # Handle notification chat mention event after create notification summary
     DiscourseEvent.on(:notification_created) do |notification|
+      Rails.logger.warn("[Lexicon Plugin] notification_created fired - Type: #{notification.notification_type}, User ID: #{notification.user_id}")
       DiscourseLexiconPlugin::ChatMentionNotification.handle(notification)
     end
 

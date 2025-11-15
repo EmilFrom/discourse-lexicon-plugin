@@ -3,7 +3,11 @@
 module DiscourseLexiconPlugin
   class ChatMentionNotification
     def self.handle(notification)
+      Rails.logger.warn("[Lexicon Plugin] ChatMentionNotification.handle called")
+      
       return unless notification.notification_type == Notification.types[:chat_mention]
+      
+      Rails.logger.warn("[Lexicon Plugin] Processing chat mention notification")
 
       data = JSON.parse(notification.data, symbolize_names: true)
       channel_id, message_id = data.values_at(:chat_channel_id, :chat_message_id)
@@ -31,6 +35,7 @@ module DiscourseLexiconPlugin
       }
 
       Jobs.enqueue(:expo_push_notification, payload:, user_id: notification.user_id)
+      Rails.logger.warn("[Lexicon Plugin] Chat mention notification enqueued successfully")
     end
   end
 end
