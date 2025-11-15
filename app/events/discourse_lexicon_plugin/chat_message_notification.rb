@@ -20,14 +20,12 @@ module DiscourseLexiconPlugin
         end
         Rails.logger.warn("[Lexicon Plugin] User #{user_id} HAS expo subscription")
         
-        # Check channel notification preference
-        # notification_level: 
-        # 0 = never, 1 = mention only (default), 2 = all messages (what we need)
-        unless membership.notification_level_before_type_cast == 2
-          Rails.logger.warn("[Lexicon Plugin] User #{user_id} notification level is #{membership.notification_level} (#{membership.notification_level_before_type_cast}) - skipping")
+        # Check app-specific notification preference (defaults to true if not set)
+        unless LexiconChatNotificationPreference.push_enabled_for?(user_id, channel.id)
+          Rails.logger.warn("[Lexicon Plugin] User #{user_id} has disabled push for channel #{channel.id} - skipping")
           next
         end
-        Rails.logger.warn("[Lexicon Plugin] User #{user_id} has notification level 2 (all messages) - proceeding")
+        Rails.logger.warn("[Lexicon Plugin] User #{user_id} has push enabled for channel #{channel.id} - proceeding")
         
         post_url = "/c/#{channel.id}#{message.thread_id ? "/#{message.thread_id}" : ""}/#{message.id}"
         

@@ -49,6 +49,8 @@ after_initialize do
     load File.expand_path('app/jobs/scheduled/clean_up_push_notification_receipts.rb', __dir__)
     load File.expand_path('app/events/discourse_lexicon_plugin/chat_mention_notification.rb', __dir__)
     load File.expand_path('app/events/discourse_lexicon_plugin/chat_message_notification.rb', __dir__)
+    load File.expand_path('app/models/lexicon_chat_notification_preference.rb', __dir__)
+    load File.expand_path('app/controllers/lexicon_chat_notification_preferences_controller.rb', __dir__)
 
     User.class_eval { has_many :expo_pn_subscriptions, dependent: :delete_all }
 
@@ -131,6 +133,9 @@ after_initialize do
   Discourse::Application.routes.append do
     get '/lexicon/deeplink/*link' => 'deeplink#index'
     get '/deeplink/*link' => 'deeplink#index'
+    get '/lexicon/chat-notifications' => 'lexicon_chat_notification_preferences#index'
+    get '/lexicon/chat-notifications/:channel_id' => 'lexicon_chat_notification_preferences#show'
+    put '/lexicon/chat-notifications/:channel_id' => 'lexicon_chat_notification_preferences#update'
   end
 
   UserNotifications.class_eval { prepend DeeplinkNotification }
