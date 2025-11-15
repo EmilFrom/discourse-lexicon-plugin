@@ -32,6 +32,10 @@ class NotificationContent
       Notification.types[:chat_mention] => {
         text: 'mentioned you at',
         body: :excerpt
+      },
+      30 => {  # ChatMessage (new type)
+        text: 'sent a message in',
+        body: :excerpt
       }
     }
 

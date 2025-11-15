@@ -39,11 +39,16 @@ after_initialize do
   load File.expand_path('app/serializers/site_serializer.rb', __dir__)
 
   if SiteSetting.lexicon_push_notifications_enabled
+    Rails.logger.warn("="*80)
+    Rails.logger.warn("[Lexicon Plugin] INITIALIZATION - Push notifications enabled")
+    Rails.logger.warn("="*80)
+    
     load File.expand_path('app/jobs/regular/expo_push_notification.rb', __dir__)
     load File.expand_path('app/jobs/regular/check_pn_receipt.rb', __dir__)
     load File.expand_path('app/jobs/scheduled/clean_up_push_notification_retries.rb', __dir__)
     load File.expand_path('app/jobs/scheduled/clean_up_push_notification_receipts.rb', __dir__)
     load File.expand_path('app/events/discourse_lexicon_plugin/chat_mention_notification.rb', __dir__)
+    load File.expand_path('app/events/discourse_lexicon_plugin/chat_message_notification.rb', __dir__)
 
     User.class_eval { has_many :expo_pn_subscriptions, dependent: :delete_all }
 
@@ -77,6 +82,41 @@ after_initialize do
     # Handle notification chat mention event after create notification summary
     DiscourseEvent.on(:notification_created) do |notification|
       DiscourseLexiconPlugin::ChatMentionNotification.handle(notification)
+    end
+
+    # Handle regular chat messages (non-mentions) using Discourse event
+    Rails.logger.warn("[Lexicon Plugin] Registering chat_message_created event handler...")
+    
+    DiscourseEvent.on(:chat_message_created) do |*args|
+      Rails.logger.warn("[Lexicon Plugin] ========================================")
+      Rails.logger.warn("[Lexicon Plugin] chat_message_created EVENT TRIGGERED!")
+      Rails.logger.warn("[Lexicon Plugin] Args count: #{args.length}")
+      Rails.logger.warn("[Lexicon Plugin] Args: #{args.inspect}")
+      Rails.logger.warn("[Lexicon Plugin] ========================================")
+      
+      begin
+        message = args[0]
+        channel = args[1]
+        user = args[2]
+        
+        Rails.logger.warn("[Lexicon Plugin] Message ID: #{message.id}, User: #{user&.username}, Channel: #{channel&.name}")
+        
+        next unless SiteSetting.lexicon_push_notifications_enabled
+        Rails.logger.warn("[Lexicon Plugin] Push notifications enabled: true")
+        
+        memberships = channel.user_chat_channel_memberships.where.not(user_id: user.id)
+        Rails.logger.warn("[Lexicon Plugin] Found #{memberships.count} memberships (excluding sender)")
+        
+        memberships.each do |m|
+          Rails.logger.warn("[Lexicon Plugin] Membership - User ID: #{m.user_id}, Notification Level: #{m.notification_level} (#{m.notification_level_before_type_cast})")
+        end
+        
+        DiscourseLexiconPlugin::ChatMessageNotification.handle(message, channel, memberships)
+        Rails.logger.warn("[Lexicon Plugin] Handler called successfully")
+      rescue => e
+        Rails.logger.error("[Lexicon Plugin] Error in chat_message_created: #{e.message}")
+        Rails.logger.error(e.backtrace.join("\n"))
+      end
     end
 
   end
