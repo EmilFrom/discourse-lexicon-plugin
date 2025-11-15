@@ -10,15 +10,24 @@ module DiscourseLexiconPlugin
       
       members.each do |membership|
         user_id = membership.user_id
+        Rails.logger.warn("[Lexicon Plugin] Processing member - User ID: #{user_id}")
         
         # Check if user has expo push subscription
         user_subscription = ExpoPnSubscription.find_by(user_id: user_id)
-        next unless user_subscription
+        unless user_subscription
+          Rails.logger.warn("[Lexicon Plugin] User #{user_id} has NO expo subscription - skipping")
+          next
+        end
+        Rails.logger.warn("[Lexicon Plugin] User #{user_id} HAS expo subscription")
         
         # Check channel notification preference
         # notification_level: 
         # 0 = never, 1 = mention only (default), 2 = all messages
-        next unless membership.notification_level == 2
+        unless membership.notification_level == 2
+          Rails.logger.warn("[Lexicon Plugin] User #{user_id} notification level is #{membership.notification_level} (not 2) - skipping")
+          next
+        end
+        Rails.logger.warn("[Lexicon Plugin] User #{user_id} has notification level 2 - proceeding")
         
         post_url = "/c/#{channel.id}#{message.thread_id ? "/#{message.thread_id}" : ""}/#{message.id}"
         
@@ -32,7 +41,9 @@ module DiscourseLexiconPlugin
           channel_name: channel.name
         }
         
+        Rails.logger.warn("[Lexicon Plugin] Enqueuing push notification for user #{user_id}")
         Jobs.enqueue(:expo_push_notification, payload:, user_id: user_id)
+        Rails.logger.warn("[Lexicon Plugin] Push notification enqueued successfully for user #{user_id}")
       end
     end
   end
