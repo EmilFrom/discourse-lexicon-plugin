@@ -22,12 +22,12 @@ module DiscourseLexiconPlugin
         
         # Check channel notification preference
         # notification_level: 
-        # 0 = never, 1 = mention only (default), 2 = always (all messages)
-        unless membership.always?
-          Rails.logger.warn("[Lexicon Plugin] User #{user_id} notification level is #{membership.notification_level} (not always) - skipping")
+        # 0 = never, 1 = mention only (default), 2 = all messages (what we need)
+        unless membership.notification_level_before_type_cast == 2
+          Rails.logger.warn("[Lexicon Plugin] User #{user_id} notification level is #{membership.notification_level} (#{membership.notification_level_before_type_cast}) - skipping")
           next
         end
-        Rails.logger.warn("[Lexicon Plugin] User #{user_id} has notification level 'always' - proceeding")
+        Rails.logger.warn("[Lexicon Plugin] User #{user_id} has notification level 2 (all messages) - proceeding")
         
         post_url = "/c/#{channel.id}#{message.thread_id ? "/#{message.thread_id}" : ""}/#{message.id}"
         
