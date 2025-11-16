@@ -3,4 +3,5 @@ DiscourseLexiconPlugin::Engine.routes.draw do
   post 'push_notifications/delete_subscribe' => 'expo_pn#unsubscribe'
 
   get 'auth/user' => 'user#get_current_user'
+  get 'image-dimensions' => 'image_dimensions#bulk_lookup'
 end
