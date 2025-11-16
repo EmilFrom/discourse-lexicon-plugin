@@ -48,7 +48,7 @@ after_initialize do
       DiscourseLexiconPlugin::UploadDimensionTracker.handle_upload_created(upload)
     end
 
-    TopicListItemSerializer.prepend(DiscourseLexiconPlugin::TopicListItemSerializerExtension)
+    TopicListItemSerializer.prepend(TopicListItemSerializerExtension)
 
     Rails.logger.info("[Lexicon Plugin] Image dimension tracking initialized")
   end
