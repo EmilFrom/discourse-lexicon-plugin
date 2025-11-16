@@ -44,8 +44,18 @@ after_initialize do
     load File.expand_path('app/controllers/discourse_lexicon_plugin/image_dimensions_controller.rb', __dir__)
     load File.expand_path('app/serializers/topic_list_item_serializer_extension.rb', __dir__)
 
-    DiscourseEvent.on(:upload_created) do |upload|
-      DiscourseLexiconPlugin::UploadDimensionTracker.handle_upload_created(upload)
+    # Use ActiveRecord callback instead of DiscourseEvent for more reliable tracking
+    Upload.class_eval do
+      after_commit :track_lexicon_image_dimensions, on: :create
+      
+      private
+      
+      def track_lexicon_image_dimensions
+        return unless extension.in?(%w[jpg jpeg png gif webp])
+        DiscourseLexiconPlugin::UploadDimensionTracker.handle_upload_created(self)
+      rescue => e
+        Rails.logger.warn("[Lexicon Plugin] Failed to track dimensions for upload #{id}: #{e.message}")
+      end
     end
 
     TopicListItemSerializer.prepend(TopicListItemSerializerExtension)
