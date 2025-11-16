@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class CreateLexiconChatNotificationPreferences < ActiveRecord::Migration[7.0]
+class CreateLexiconChatNotificationPreferences < ActiveRecord::Migration[6.1]
   def change
     create_table :lexicon_chat_notification_preferences do |t|
       t.integer :user_id, null: false

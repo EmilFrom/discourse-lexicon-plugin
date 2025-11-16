@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class CreateLexiconImageDimensions < ActiveRecord::Migration[7.0]
+class CreateLexiconImageDimensions < ActiveRecord::Migration[6.1]
   def change
     create_table :lexicon_image_dimensions do |t|
       t.integer :upload_id, null: false
