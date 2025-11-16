@@ -45,6 +45,7 @@ class LexiconChatNotificationPreferencesController < ApplicationController
     render json: {
       preferences: prefs.map do |p|
         {
+          user_id: p.user_id,
           channel_id: p.chat_channel_id,
           push_enabled: p.push_enabled
         }
