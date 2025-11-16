@@ -38,6 +38,21 @@ after_initialize do
   load File.expand_path('app/deeplink_notification_module.rb', __dir__)
   load File.expand_path('app/serializers/site_serializer.rb', __dir__)
 
+  if SiteSetting.lexicon_image_dimensions_enabled
+    load File.expand_path('app/models/lexicon_image_dimension.rb', __dir__)
+    load File.expand_path('app/events/discourse_lexicon_plugin/upload_dimension_tracker.rb', __dir__)
+    load File.expand_path('app/controllers/discourse_lexicon_plugin/image_dimensions_controller.rb', __dir__)
+    load File.expand_path('app/serializers/topic_list_item_serializer_extension.rb', __dir__)
+
+    DiscourseEvent.on(:upload_created) do |upload|
+      DiscourseLexiconPlugin::UploadDimensionTracker.handle_upload_created(upload)
+    end
+
+    TopicListItemSerializer.prepend(DiscourseLexiconPlugin::TopicListItemSerializerExtension)
+
+    Rails.logger.info("[Lexicon Plugin] Image dimension tracking initialized")
+  end
+
   if SiteSetting.lexicon_push_notifications_enabled
     Rails.logger.warn("="*80)
     Rails.logger.warn("[Lexicon Plugin] INITIALIZATION - Push notifications enabled")

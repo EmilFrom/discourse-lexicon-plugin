@@ -9,3 +9,7 @@ lexicon:
     default: ""
     type: text
     validator: "LexiconAppSchemeValidator"
+  lexicon_image_dimensions_enabled:
+    default: true
+    client: false
+    description: "Enable server-side image dimension caching for Lexicon app"
