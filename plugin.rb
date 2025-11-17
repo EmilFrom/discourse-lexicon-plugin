@@ -46,7 +46,7 @@ after_initialize do
 
     # Use ActiveRecord callback instead of DiscourseEvent for more reliable tracking
     Upload.class_eval do
-      after_commit :track_lexicon_image_dimensions, on: :create
+      after_create :track_lexicon_image_dimensions
       
       private
       
