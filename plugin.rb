@@ -51,18 +51,27 @@ after_initialize do
       private
       
       def track_lexicon_image_dimensions
-        return unless extension.in?(%w[jpg jpeg png gif webp])
+        return unless DiscourseLexiconPlugin::UploadDimensionTracker.image_extension?(extension)
         
-        # Run in a separate transaction to avoid rollback issues
         ActiveRecord::Base.connection_pool.with_connection do
-          # Reload the upload to ensure we have the committed data
           upload = Upload.find_by(id: id)
           return unless upload
-          
-          DiscourseLexiconPlugin::UploadDimensionTracker.handle_upload_created(upload)
+
+          if upload.width.present? && upload.height.present?
+            DiscourseLexiconPlugin::UploadDimensionTracker.handle_upload_created(upload)
+          else
+            enqueue_dimension_tracking_retry(upload.id)
+          end
         end
       rescue => e
         Rails.logger.warn("[Lexicon Plugin] Failed to track dimensions for upload #{id}: #{e.message}")
+      end
+
+      def enqueue_dimension_tracking_retry(upload_id)
+        Jobs.enqueue_in(5.seconds, :track_upload_dimensions, upload_id:, attempt: 1)
+        Rails.logger.info("[Lexicon Plugin] Scheduled TrackUploadDimensions job for upload #{upload_id}")
+      rescue => e
+        Rails.logger.warn("[Lexicon Plugin] Failed to enqueue dimension job for upload #{upload_id}: #{e.message}")
       end
     end
 

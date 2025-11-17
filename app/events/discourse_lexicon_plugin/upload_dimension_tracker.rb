@@ -2,9 +2,15 @@
 
 module DiscourseLexiconPlugin
   class UploadDimensionTracker
+    ALLOWED_EXTENSIONS = %w[jpg jpeg png gif webp].freeze
+
+    def self.image_extension?(extension)
+      extension&.in?(ALLOWED_EXTENSIONS)
+    end
+
     def self.handle_upload_created(upload)
       return unless upload&.id
-      return unless upload.extension.in?(%w[jpg jpeg png gif webp])
+      return unless image_extension?(upload.extension)
 
       start_time = Time.now
       result = LexiconImageDimension.ensure_for_upload(upload)
