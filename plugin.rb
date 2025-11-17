@@ -46,7 +46,7 @@ after_initialize do
 
     # Use after_commit callback to ensure dimension tracking happens after upload transaction completes
     Upload.class_eval do
-      after_commit :track_lexicon_image_dimensions, on: :create
+      after_commit :track_lexicon_image_dimensions, on: %i[create update]
       
       private
       
@@ -57,19 +57,19 @@ after_initialize do
           upload = Upload.find_by(id: id)
           return unless upload
 
-          if upload.width.present? && upload.height.present?
-            DiscourseLexiconPlugin::UploadDimensionTracker.handle_upload_created(upload)
-          else
-            enqueue_dimension_tracking_retry(upload.id)
+          if transaction_include_any_action?(:create)
+            enqueue_dimension_tracking_job(upload.id, attempt: 1, delay: 5.seconds)
+          elsif width.present? && height.present? && (saved_change_to_width? || saved_change_to_height?)
+            enqueue_dimension_tracking_job(upload.id, attempt: 0, delay: 1.second)
           end
         end
       rescue => e
         Rails.logger.warn("[Lexicon Plugin] Failed to track dimensions for upload #{id}: #{e.message}")
       end
 
-      def enqueue_dimension_tracking_retry(upload_id)
-        Jobs.enqueue_in(5.seconds, :track_upload_dimensions, upload_id:, attempt: 1)
-        Rails.logger.info("[Lexicon Plugin] Scheduled TrackUploadDimensions job for upload #{upload_id}")
+      def enqueue_dimension_tracking_job(upload_id, attempt:, delay:)
+        Jobs.enqueue_in(delay, :track_upload_dimensions, upload_id:, attempt:)
+        Rails.logger.info("[Lexicon Plugin] Scheduled TrackUploadDimensions job for upload #{upload_id} (attempt #{attempt})")
       rescue => e
         Rails.logger.warn("[Lexicon Plugin] Failed to enqueue dimension job for upload #{upload_id}: #{e.message}")
       end

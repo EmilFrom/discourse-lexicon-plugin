@@ -7,17 +7,19 @@ module Jobs
 
     def execute(args)
       return unless SiteSetting.lexicon_image_dimensions_enabled
-
       upload = Upload.find_by(id: args[:upload_id])
       return unless upload
       return unless DiscourseLexiconPlugin::UploadDimensionTracker.image_extension?(upload.extension)
 
+      attempt = args[:attempt].to_i
+      Rails.logger.info("[Lexicon Plugin] TrackUploadDimensions job attempt #{attempt} for upload #{upload.id}")
+
       if upload.width.present? && upload.height.present?
         DiscourseLexiconPlugin::UploadDimensionTracker.handle_upload_created(upload)
-      elsif args[:attempt].to_i < MAX_ATTEMPTS
-        attempt = args[:attempt].to_i + 1
-        Rails.logger.info("[Lexicon Plugin] Scheduling retry #{attempt} for upload #{upload.id} (missing dimensions)")
-        Jobs.enqueue_in(RETRY_DELAY, :track_upload_dimensions, upload_id: upload.id, attempt:)
+      elsif attempt < MAX_ATTEMPTS
+        next_attempt = attempt + 1
+        Rails.logger.info("[Lexicon Plugin] Scheduling retry #{next_attempt} for upload #{upload.id} (missing dimensions)")
+        Jobs.enqueue_in(RETRY_DELAY, :track_upload_dimensions, upload_id: upload.id, attempt: next_attempt)
       else
         Rails.logger.warn("[Lexicon Plugin] Giving up tracking dimensions for upload #{upload.id} after #{MAX_ATTEMPTS} attempts")
       end

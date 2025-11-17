@@ -13,15 +13,23 @@ class LexiconImageDimension < ActiveRecord::Base
 
   # Find or create with lazy fallback from Upload record
   def self.ensure_for_upload(upload)
-    return nil unless upload&.id && upload.width && upload.height
+    return nil unless upload&.id && upload.width.present? && upload.height.present?
 
-    find_or_create_by(upload_id: upload.id) do |dim|
-      dim.url = upload.url
-      dim.width = upload.width
-      dim.height = upload.height
+    dimension = find_or_initialize_by(upload_id: upload.id)
+    dimension.url = upload.url
+    dimension.width = upload.width
+    dimension.height = upload.height
+
+    if dimension.save
+      Rails.logger.info("[Lexicon Plugin] Saved image dimension for upload #{upload.id} (#{dimension.width}x#{dimension.height})")
+      dimension
+    else
+      Rails.logger.warn("[Lexicon Plugin] Failed to persist dimensions for upload #{upload.id}: #{dimension.errors.full_messages.to_sentence}")
+      nil
     end
-  rescue ActiveRecord::RecordInvalid => e
-    Rails.logger.warn("[Lexicon Plugin] Failed to create image dimension: #{e.message}")
+  rescue => e
+    Rails.logger.error("[Lexicon Plugin] Unexpected error creating image dimension for upload #{upload&.id}: #{e.class} - #{e.message}")
+    Rails.logger.error(e.backtrace.join("\n"))
     nil
   end
 
