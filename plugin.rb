@@ -56,8 +56,7 @@ after_initialize do
         ActiveRecord::Base.connection_pool.with_connection do
           upload = Upload.find_by(id: id)
           return unless upload
-
-          if transaction_include_any_action?(:create)
+          if saved_change_to_id?
             enqueue_dimension_tracking_job(upload.id, attempt: 1, delay: 5.seconds)
           elsif width.present? && height.present? && (saved_change_to_width? || saved_change_to_height?)
             enqueue_dimension_tracking_job(upload.id, attempt: 0, delay: 1.second)
