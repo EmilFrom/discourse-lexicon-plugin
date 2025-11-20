@@ -35,10 +35,9 @@ class LexiconImageDimension < ActiveRecord::Base
     return nil if url.blank?
 
     # 1. Normalize URL: Create a relative version (strip protocol/host)
-    #    Input: https://site.com/uploads/default/img.jpg -> Output: /uploads/default/img.jpg
     relative_url = url.sub(/^https?:\/\/[^\/]+/, '')
 
-    # 2. Try Lexicon Cache (Check both absolute and relative keys)
+    # 2. Try Lexicon Cache
     dimension = find_by(url: url) || find_by(url: relative_url)
     return format_dimension(dimension, url) if dimension
 
@@ -49,21 +48,40 @@ class LexiconImageDimension < ActiveRecord::Base
       return format_dimension(dimension, url) if dimension
     end
 
-    # 4. Fallback: Try OptimizedImage Table (Thumbnails/Resized versions)
-    #    The frontend often requests optimized URLs which aren't in the 'uploads' table.
+    # 4. Fallback: Try OptimizedImage Table
     optimized = OptimizedImage.find_by(url: relative_url) || OptimizedImage.find_by(url: url)
     if optimized && optimized.width && optimized.height
-      # We calculate aspect ratio on the fly for optimized images
       return {
-        url: url, # Return the requested URL so the frontend map key matches
+        url: url,
         width: optimized.width,
         height: optimized.height,
         aspectRatio: optimized.width.to_f / optimized.height.to_f
       }
     end
 
+    # 5. [NEW FIX] Fallback: Try to resolve Original Upload from Optimized URL
+    # If we couldn't find the optimized record, we strip the resolution suffix
+    # and look for the original parent upload.
+    if relative_url.include?('/optimized/')
+      # Convert /optimized/ -> /original/
+      original_path = relative_url.sub('/optimized/', '/original/')
+      
+      # Remove the Discourse optimization suffix (e.g., _2_690x388)
+      # Regex matches: underscore, digit, underscore, digits, 'x', digits, before extension
+      original_path = original_path.sub(/_\d+_\d+x\d+(?=\.[a-zA-Z]+$)/, '')
+
+      upload = Upload.find_by(url: original_path)
+      if upload && upload.width && upload.height
+        # create the dimension record for the ORIGINAL
+        dimension = ensure_for_upload(upload)
+        # return it mapped to the REQUESTED (optimized) url so the frontend map works
+        return format_dimension(dimension, url) if dimension
+      end
+    end
+
     nil
   end
+
 
   # Bulk lookup
   def self.dimensions_for_urls(urls)
