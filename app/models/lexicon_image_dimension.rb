@@ -31,25 +31,18 @@ class LexiconImageDimension < ActiveRecord::Base
   end
 
   # Lazy lookup with fallback to Upload table and OptimizedImage table
-  def self.dimension_for_url(url)
+ def self.dimension_for_url(url)
     return nil if url.blank?
 
-    # 1. Normalize URL: Create a relative version (strip protocol/host)
+    # 1. Try strict lookup (Cache)
+    # Normalize URL: Create a relative version (strip protocol/host)
     relative_url = url.sub(/^https?:\/\/[^\/]+/, '')
-
-    # 2. Try Lexicon Cache
+    
     dimension = find_by(url: url) || find_by(url: relative_url)
     return format_dimension(dimension, url) if dimension
 
-    # 3. Fallback: Try Upload Table (The original image)
-    upload = Upload.find_by(url: relative_url) || Upload.find_by(url: url)
-    if upload && upload.width && upload.height
-      dimension = ensure_for_upload(upload)
-      return format_dimension(dimension, url) if dimension
-    end
-
-    # 4. Fallback: Try OptimizedImage Table
-    optimized = OptimizedImage.find_by(url: relative_url) || OptimizedImage.find_by(url: url)
+    # 2. Try strict lookup (Optimized Image Table)
+    optimized = OptimizedImage.find_by(url: relative_url)
     if optimized && optimized.width && optimized.height
       return {
         url: url,
@@ -59,29 +52,37 @@ class LexiconImageDimension < ActiveRecord::Base
       }
     end
 
-    # 5. [NEW FIX] Fallback: Try to resolve Original Upload from Optimized URL
-    # If we couldn't find the optimized record, we strip the resolution suffix
-    # and look for the original parent upload.
-    if relative_url.include?('/optimized/')
-      # Convert /optimized/ -> /original/
-      original_path = relative_url.sub('/optimized/', '/original/')
-      
-      # Remove the Discourse optimization suffix (e.g., _2_690x388)
-      # Regex matches: underscore, digit, underscore, digits, 'x', digits, before extension
-      original_path = original_path.sub(/_\d+_\d+x\d+(?=\.[a-zA-Z]+$)/, '')
+    # 3. THE FIX: SHA1 Lookup (The "Fingerprint" method)
+    # Extract the 40-character SHA1 hash from the URL
+    sha1 = url[/[a-f0-9]{40}/]
 
-      upload = Upload.find_by(url: original_path)
+    if sha1
+      # Find the original upload by its hash
+      upload = Upload.find_by(sha1: sha1)
+      
       if upload && upload.width && upload.height
-        # create the dimension record for the ORIGINAL
-        dimension = ensure_for_upload(upload)
-        # return it mapped to the REQUESTED (optimized) url so the frontend map works
-        return format_dimension(dimension, url) if dimension
+        # Calculate dimensions based on the requested URL if possible
+        # (If the URL says 750x1000, trust that over the original 3000x4000)
+        match = url.match(/_(\d+)x(\d+)\.[a-zA-Z]+$/)
+        
+        if match
+          req_w = match[1].to_i
+          req_h = match[2].to_i
+          return {
+            url: url,
+            width: req_w,
+            height: req_h,
+            aspectRatio: req_w.to_f / req_h.to_f
+          }
+        else
+          # Fallback: Return the Original's dimensions (Aspect Ratio is usually preserved)
+          return format_dimension(ensure_for_upload(upload), url)
+        end
       end
     end
 
     nil
   end
-
 
   # Bulk lookup
   def self.dimensions_for_urls(urls)
