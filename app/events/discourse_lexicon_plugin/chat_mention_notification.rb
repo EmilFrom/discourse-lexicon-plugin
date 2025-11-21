@@ -3,18 +3,19 @@
 module DiscourseLexiconPlugin
   class ChatMentionNotification
     def self.handle(notification)
-      Rails.logger.warn("[Lexicon Plugin] ChatMentionNotification.handle called")
-      
       return unless notification.notification_type == Notification.types[:chat_mention]
       
-      Rails.logger.warn("[Lexicon Plugin] Processing chat mention notification")
-
       data = JSON.parse(notification.data, symbolize_names: true)
       channel_id, message_id = data.values_at(:chat_channel_id, :chat_message_id)
       return unless channel_id && message_id
 
       message = Chat::Message.find_by(chat_channel_id: channel_id, id: message_id)
-      return unless message # If message is nil, exit early.
+      return unless message 
+
+      # --- NEW: Clean Excerpt Logic ---
+      raw_excerpt = message.message || ""
+      cleaned_excerpt = raw_excerpt.gsub(/!\[.*?\]\(.*?\)/, '📷 [Image]').strip
+      # --------------------------------
 
       sender = message.user
       chat_channel = message.chat_channel
@@ -26,7 +27,7 @@ module DiscourseLexiconPlugin
 
       payload = {
         notification_type: notification.notification_type,
-        excerpt: message.message,
+        excerpt: cleaned_excerpt, # <--- CHANGED
         username: sender.username,
         post_url: post_url,
         is_chat: true,
@@ -35,7 +36,6 @@ module DiscourseLexiconPlugin
       }
 
       Jobs.enqueue(:expo_push_notification, payload:, user_id: notification.user_id)
-      Rails.logger.warn("[Lexicon Plugin] Chat mention notification enqueued successfully")
     end
   end
 end

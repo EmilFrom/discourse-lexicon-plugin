@@ -1,37 +1,39 @@
 # frozen_string_literal: true
-
 module DiscourseLexiconPlugin
   class ChatMessageNotification
     def self.handle(message, channel, members)
       sender = message.user
       
+      # --- NEW: Helper logic to clean excerpt ---
+      raw_excerpt = message.message || ""
+      
+      # Regex to find markdown images ex: ![image.jpg|...](upload://...)
+      # We replace it with a camera emoji and text
+      cleaned_excerpt = raw_excerpt.gsub(/!\[.*?\]\(.*?\)/, '📷 [Image]').strip
+      
+      # If the message was ONLY an image, it might look like "📷 [Image]", which is perfect.
+      # If it was "Check this out ![...]", it becomes "Check this out 📷 [Image]"
+      # ------------------------------------------
+
       # Don't notify the sender
       members = members.reject { |member| member.user_id == sender.id }
       
       members.each do |membership|
         user_id = membership.user_id
-        Rails.logger.warn("[Lexicon Plugin] Processing member - User ID: #{user_id}")
         
-        # Check if user has expo push subscription
+        # ... (Existing subscription checks) ...
         user_subscription = ExpoPnSubscription.find_by(user_id: user_id)
-        unless user_subscription
-          Rails.logger.warn("[Lexicon Plugin] User #{user_id} has NO expo subscription - skipping")
-          next
-        end
-        Rails.logger.warn("[Lexicon Plugin] User #{user_id} HAS expo subscription")
+        next unless user_subscription
         
-        # Check app-specific notification preference (defaults to true if not set)
         unless LexiconChatNotificationPreference.push_enabled_for?(user_id, channel.id)
-          Rails.logger.warn("[Lexicon Plugin] User #{user_id} has disabled push for channel #{channel.id} - skipping")
           next
         end
-        Rails.logger.warn("[Lexicon Plugin] User #{user_id} has push enabled for channel #{channel.id} - proceeding")
         
         post_url = "/c/#{channel.id}#{message.thread_id ? "/#{message.thread_id}" : ""}/#{message.id}"
         
         payload = {
-          notification_type: 30, # NEW: ChatMessage type
-          excerpt: message.message,
+          notification_type: 30, 
+          excerpt: cleaned_excerpt, # <--- CHANGED: Use cleaned_excerpt instead of message.message
           username: sender.username,
           post_url: post_url,
           is_chat: true,
@@ -39,9 +41,7 @@ module DiscourseLexiconPlugin
           channel_name: channel.name
         }
         
-        Rails.logger.warn("[Lexicon Plugin] Enqueuing push notification for user #{user_id}")
         Jobs.enqueue(:expo_push_notification, payload:, user_id: user_id)
-        Rails.logger.warn("[Lexicon Plugin] Push notification enqueued successfully for user #{user_id}")
       end
     end
   end
