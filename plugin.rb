@@ -177,7 +177,7 @@ after_initialize do
     get '/lexicon/chat-notifications' => 'lexicon_chat_notification_preferences#index'
     get '/lexicon/chat-notifications/:channel_id' => 'lexicon_chat_notification_preferences#show'
     put '/lexicon/chat-notifications/:channel_id' => 'lexicon_chat_notification_preferences#update'
-    post '/lexicon/projects' => 'projects#create'
+    post '/lexicon/projects' => 'discourse_lexicon_plugin/projects#create'
   end
 
   UserNotifications.class_eval { prepend DeeplinkNotification }
