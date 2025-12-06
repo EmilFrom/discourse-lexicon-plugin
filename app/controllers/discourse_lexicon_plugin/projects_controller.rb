@@ -18,7 +18,7 @@ module DiscourseLexiconPlugin
       }
 
       # Use CategoryCreator to handle all the heavy lifting (slugs, validation, etc.)
-      creator = CategoryCreator.new(Discourse.system_user, category_args)
+      creator = ::CategoryCreator.new(Discourse.system_user, category_args)
       category = creator.create
 
       if creator.errors.present?
@@ -33,9 +33,9 @@ module DiscourseLexiconPlugin
 
       # 3. (Optional) Create Chat Channel
       chat_channel = nil
-      if params[:create_chat] == 'true' && defined?(Chat::Channel)
+      if params[:create_chat] == 'true' && defined?(::Chat::Channel)
         # Create a category channel
-        chat_channel = Chat::Channel.create!(
+        chat_channel = ::Chat::Channel.create!(
           chatable: category,
           chatable_type: 'Category',
           name: "General",
