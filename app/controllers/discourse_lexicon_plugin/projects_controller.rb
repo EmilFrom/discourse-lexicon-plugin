@@ -3,6 +3,7 @@
 module DiscourseLexiconPlugin
   class ProjectsController < ::ApplicationController
     requires_plugin 'discourse-lexicon-plugin'
+    require_dependency 'category_creator'
 
     def create
       params.require(:name)
