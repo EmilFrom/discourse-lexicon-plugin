@@ -4,8 +4,14 @@ module DiscourseLexiconPlugin
     
     def create
       Rails.logger.warn("[Lexicon] ProjectsController#create called")
-      require_dependency 'category_creator'
-      Rails.logger.warn("[Lexicon] Dependency loaded")
+      
+      begin
+        require 'category_creator'
+        Rails.logger.warn("[Lexicon] 'category_creator' required")
+      rescue LoadError => e
+        Rails.logger.warn("[Lexicon] LoadError requiring category_creator: #{e.message}")
+        # Try without require, maybe it's already there?
+      end
 
       params.require(:name)
       Rails.logger.warn("[Lexicon] Params: #{params.inspect}")
@@ -59,7 +65,7 @@ module DiscourseLexiconPlugin
         },
         chat_channel_id: chat_channel&.id
       }
-    rescue => e
+    rescue Exception => e
       Rails.logger.error("[Lexicon] ERROR: #{e.message}")
       Rails.logger.error(e.backtrace.join("\n"))
       render_json_error(e.message)
