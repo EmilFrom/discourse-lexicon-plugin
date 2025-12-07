@@ -1,5 +1,7 @@
 module DiscourseLexiconPlugin
   class ProjectsController < ::ApplicationController
+    skip_before_action :verify_authenticity_token
+    
     def create
       require_dependency 'category_creator'
       params.require(:name)
