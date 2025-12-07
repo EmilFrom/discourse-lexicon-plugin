@@ -35,6 +35,7 @@ require_relative 'lib/validators/lexicon_app_scheme_validators'
 
 after_initialize do
   load File.expand_path('app/controllers/deeplink_controller.rb', __dir__)
+  load File.expand_path('app/controllers/discourse_lexicon_plugin/projects_controller.rb', __dir__)
   load File.expand_path('app/deeplink_notification_module.rb', __dir__)
   load File.expand_path('app/serializers/site_serializer.rb', __dir__)
 
