@@ -5,37 +5,44 @@ module DiscourseLexiconPlugin
     def create
       Rails.logger.warn("[Lexicon] ProjectsController#create called")
       
+      category = nil
+      
       begin
+        # Try the "Right Way" first
         require 'category_creator'
         Rails.logger.warn("[Lexicon] 'category_creator' required")
-      rescue LoadError => e
-        Rails.logger.warn("[Lexicon] LoadError requiring category_creator: #{e.message}")
-        # Try without require, maybe it's already there?
-      end
-
-      params.require(:name)
-      Rails.logger.warn("[Lexicon] Params: #{params.inspect}")
-      Rails.logger.warn("[Lexicon] Current User: #{current_user&.username}")
-      
-      # 1. Create the Category
-      category_args = {
-        name: params[:name],
-        description: params[:description],
-        color: params[:color] || '0088CC',
-        text_color: 'FFFFFF',
-        user: current_user
-      }
-
-      Rails.logger.warn("[Lexicon] Initializing CategoryCreator")
-      creator = ::CategoryCreator.new(Discourse.system_user, category_args)
-      
-      Rails.logger.warn("[Lexicon] Creating category...")
-      category = creator.create
-      Rails.logger.warn("[Lexicon] Category created: #{category&.id}")
-
-      if creator.errors.present?
-        Rails.logger.warn("[Lexicon] Creator errors: #{creator.errors.full_messages}")
-        return render_json_error(creator.errors.full_messages.join(", "))
+        
+        category_args = {
+          name: params[:name],
+          description: params[:description],
+          color: params[:color] || '0088CC',
+          text_color: 'FFFFFF',
+          user: current_user
+        }
+        
+        Rails.logger.warn("[Lexicon] Using CategoryCreator")
+        creator = ::CategoryCreator.new(Discourse.system_user, category_args)
+        category = creator.create
+        
+        if creator.errors.present?
+          return render_json_error(creator.errors.full_messages.join(", "))
+        end
+        
+      rescue LoadError, NameError => e
+        Rails.logger.warn("[Lexicon] CategoryCreator failed (#{e.message}). Falling back to Category.create!")
+        
+        # Fallback: Direct ActiveRecord creation
+        category = Category.create!(
+          name: params[:name],
+          user: current_user,
+          color: params[:color] || '0088CC',
+          text_color: 'FFFFFF'
+        )
+        
+        # Manually create description post if needed (simplified)
+        if params[:description].present?
+          category.update!(description: params[:description])
+        end
       end
 
       # 2. Set Permissions
@@ -65,7 +72,7 @@ module DiscourseLexiconPlugin
         },
         chat_channel_id: chat_channel&.id
       }
-    rescue Exception => e
+    rescue => e
       Rails.logger.error("[Lexicon] ERROR: #{e.message}")
       Rails.logger.error(e.backtrace.join("\n"))
       render_json_error(e.message)
