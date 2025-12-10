@@ -30,24 +30,29 @@ module DiscourseLexiconPlugin
         category.save!
       end
 
-      begin
-        chat_channel = maybe_create_chat_channel(category, norm[:create_chat])
-      rescue => chat_error
-        Rails.logger.warn("[Lexicon] Chat channel creation failed: #{chat_error.message}")
-        Rails.logger.warn(chat_error.backtrace.join("\n"))
-        chat_warning = "Category created but chat channel could not be created"
+      # Create chat channel if requested
+      if norm[:create_chat]
+        begin
+          chat_channel = create_chat_channel(category)
+        rescue => chat_error
+          Rails.logger.warn("[Lexicon] Chat channel creation failed: #{chat_error.message}")
+          Rails.logger.warn(chat_error.backtrace.join("\n"))
+          chat_warning = "Category created but chat channel could not be created"
+        end
       end
 
-      render json: {
+      response = {
         category: {
           id: category.id,
           name: category.name,
           slug: category.slug,
           url: category.url
-        },
-        chat_channel_id: chat_channel&.id,
-        warning: chat_warning
+        }
       }
+      response[:chat_channel_id] = chat_channel&.id if chat_channel
+      response[:warning] = chat_warning if chat_warning
+
+      render json: response
     rescue => e
       Rails.logger.error("[Lexicon] ERROR: #{e.message}")
       Rails.logger.error(e.backtrace.join("\n"))
@@ -142,19 +147,68 @@ module DiscourseLexiconPlugin
       category
     end
 
-    def maybe_create_chat_channel(category, create_chat_flag)
-      return nil unless create_chat_flag
+    def create_chat_channel(category)
       return nil unless defined?(::Chat::Channel)
-      # If CategoryCreator is unavailable, skip chat creation because Chat::Channel
-      # may rely on slug generation callbacks not present in the fallback flow.
-      return nil unless defined?(::CategoryCreator)
 
-      Rails.logger.warn("[Lexicon] Creating chat channel...")
-      ::Chat::Channel.create!(
-        chatable: category,
+      Rails.logger.warn("[Lexicon] Creating chat channel for category #{category.id}...")
+
+      # Use internal API call to create the channel
+      # This avoids permission issues by using the same user context
+      chat_params = {
+        chatable_id: category.id,
         chatable_type: "Category",
         name: "General"
-      )
+      }
+
+      # Make internal HTTP request to Chat API endpoint
+      # Use the same base URL but make an internal request
+      base_url = Discourse.base_url
+      uri = URI("#{base_url}/chat/api/channels.json")
+      
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = (uri.scheme == 'https')
+      http.read_timeout = 10
+
+      request = Net::HTTP::Post.new(uri.path)
+      request['Content-Type'] = 'application/json'
+      
+      # Use current user's API credentials for authentication
+      # Try to get an API key for the current user
+      api_key = current_user.api_key || UserApiKey.where(user_id: current_user.id, revoked_at: nil).order(created_at: :desc).first&.key
+      
+      if api_key
+        request['Api-Key'] = api_key
+        request['Api-Username'] = current_user.username
+      else
+        # If no API key, we'll need to create one or use session auth
+        # For now, raise an error - API key should exist for API calls
+        raise StandardError.new("No API key found for user. Chat channel creation requires API authentication.")
+      end
+      
+      request.body = chat_params.to_json
+
+      response = http.request(request)
+
+      if response.code.to_i == 200 || response.code.to_i == 201
+        result = JSON.parse(response.body)
+        channel_id = result.dig('channel', 'id') || result['id']
+        if channel_id
+          Rails.logger.warn("[Lexicon] Chat channel created with ID: #{channel_id}")
+          return ::Chat::Channel.find(channel_id)
+        end
+      end
+
+      error_msg = begin
+        parsed = JSON.parse(response.body)
+        parsed['errors'] || parsed['error'] || parsed.to_s
+      rescue
+        response.body
+      end
+      Rails.logger.error("[Lexicon] Chat API returned #{response.code}: #{error_msg}")
+      raise StandardError.new("Failed to create chat channel: #{error_msg}")
+    rescue => e
+      Rails.logger.error("[Lexicon] Error creating chat channel: #{e.message}")
+      raise
     end
   end
 end
