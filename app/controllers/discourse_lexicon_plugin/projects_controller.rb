@@ -1,5 +1,3 @@
-require_dependency 'category_creator'
-
 module DiscourseLexiconPlugin
   class ProjectsController < ::ApplicationController
     skip_before_action :verify_authenticity_token
@@ -95,6 +93,12 @@ module DiscourseLexiconPlugin
       category = nil
 
       begin
+        begin
+          require_dependency 'category_creator'
+        rescue LoadError
+          # Will fall back below if not available
+        end
+
         if defined?(::CategoryCreator)
           Rails.logger.warn("[Lexicon] Using CategoryCreator")
           category_args = {
