@@ -13,3 +13,8 @@ lexicon:
     default: true
     client: false
     description: "Enable server-side image dimension caching for Lexicon app"
+  lexicon_projects_allowed_group:
+    default: ""
+    client: false
+    type: group
+    description: "Group allowed to create Lexicon projects (categories). If empty, only users allowed by Guardian can create."
