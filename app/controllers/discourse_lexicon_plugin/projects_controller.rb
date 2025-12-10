@@ -145,6 +145,9 @@ module DiscourseLexiconPlugin
     def maybe_create_chat_channel(category, create_chat_flag)
       return nil unless create_chat_flag
       return nil unless defined?(::Chat::Channel)
+      # If CategoryCreator is unavailable, skip chat creation because Chat::Channel
+      # may rely on slug generation callbacks not present in the fallback flow.
+      return nil unless defined?(::CategoryCreator)
 
       Rails.logger.warn("[Lexicon] Creating chat channel...")
       ::Chat::Channel.create!(
