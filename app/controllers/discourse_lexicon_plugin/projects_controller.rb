@@ -172,17 +172,26 @@ module DiscourseLexiconPlugin
       request = Net::HTTP::Post.new(uri.path)
       request['Content-Type'] = 'application/json'
       
-      # Use current user's API credentials for authentication
-      # Try to get an API key for the current user
-      api_key = current_user.api_key || UserApiKey.where(user_id: current_user.id, revoked_at: nil).order(created_at: :desc).first&.key
+      # Use the API credentials from the original request headers
+      # This way we use the same authentication that was used to call this endpoint
+      api_key = self.request.headers['Api-Key'] || self.request.headers['User-Api-Key']
+      api_username = self.request.headers['Api-Username'] || current_user.username
       
       if api_key
         request['Api-Key'] = api_key
-        request['Api-Username'] = current_user.username
+        request['Api-Username'] = api_username
       else
-        # If no API key, we'll need to create one or use session auth
-        # For now, raise an error - API key should exist for API calls
-        raise StandardError.new("No API key found for user. Chat channel creation requires API authentication.")
+        # Fallback: try to find a UserApiKey for the current user
+        user_api_key = UserApiKey.where(user_id: current_user.id, revoked_at: nil).order(created_at: :desc).first
+        if user_api_key
+          request['Api-Key'] = user_api_key.key
+          request['Api-Username'] = current_user.username
+        else
+          # Last resort: use session-based auth by forwarding cookies from original request
+          if self.request.headers['Cookie'].present?
+            request['Cookie'] = self.request.headers['Cookie']
+          end
+        end
       end
       
       request.body = chat_params.to_json
