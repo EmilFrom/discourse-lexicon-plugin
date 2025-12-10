@@ -33,7 +33,7 @@ module DiscourseLexiconPlugin
       # Create chat channel if requested
       if norm[:create_chat]
         begin
-          chat_channel = create_chat_channel(category)
+          chat_channel = create_chat_channel(category, norm[:chat_channel_name], norm[:chat_channel_description])
         rescue => chat_error
           Rails.logger.warn("[Lexicon] Chat channel creation failed: #{chat_error.message}")
           Rails.logger.warn(chat_error.backtrace.join("\n"))
@@ -74,6 +74,19 @@ module DiscourseLexiconPlugin
         return "Description is too long (max 1000 characters)"
       end
 
+      # Validate chat channel name if provided
+      if params[:create_chat].present? && ActiveModel::Type::Boolean.new.cast(params[:create_chat])
+        chat_name = params[:chat_channel_name].to_s.strip
+        if chat_name.present? && chat_name.length > 100
+          return "Chat channel name is too long (max 100 characters)"
+        end
+
+        chat_desc = params[:chat_channel_description].to_s.strip
+        if chat_desc.length > 500
+          return "Chat channel description is too long (max 500 characters)"
+        end
+      end
+
       nil
     end
 
@@ -90,7 +103,9 @@ module DiscourseLexiconPlugin
         description: description,
         color: color,
         text_color: "ffffff",
-        create_chat: ActiveModel::Type::Boolean.new.cast(params[:create_chat])
+        create_chat: ActiveModel::Type::Boolean.new.cast(params[:create_chat]),
+        chat_channel_name: params[:chat_channel_name].to_s.strip.presence,
+        chat_channel_description: params[:chat_channel_description].to_s.strip.presence
       }
     end
 
@@ -147,7 +162,7 @@ module DiscourseLexiconPlugin
       category
     end
 
-    def create_chat_channel(category)
+    def create_chat_channel(category, channel_name = nil, channel_description = nil)
       return nil unless defined?(::Chat::Channel)
 
       Rails.logger.warn("[Lexicon] Creating chat channel for category #{category.id}...")
@@ -157,8 +172,11 @@ module DiscourseLexiconPlugin
       chat_params = {
         chatable_id: category.id,
         chatable_type: "Category",
-        name: "General"
+        name: channel_name.presence || "General"
       }
+      
+      # Add description if provided
+      chat_params[:description] = channel_description if channel_description.present?
 
       # Make internal HTTP request to Chat API endpoint
       # Use the same base URL but make an internal request
