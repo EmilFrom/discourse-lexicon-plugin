@@ -112,8 +112,7 @@ module DiscourseLexiconPlugin
       ::Chat::Channel.create!(
         chatable: category,
         chatable_type: "Category",
-        name: "General",
-        user: current_user
+        name: "General"
       )
     end
   end
