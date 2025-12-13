@@ -41,16 +41,31 @@ after_initialize do
   
   # CRITICAL FIX: Patch Chat::Channel to handle updates for channels created via insert_all
   # The issue is that insert_all bypasses callbacks, so generate_auto_slug doesn't exist
-  # When Discourse tries to update the channel, it fails. We'll patch update! to handle this.
+  # When Discourse tries to update the channel, it fails during validation.
+  # We'll ensure generate_auto_slug always exists as a safe stub method.
   if defined?(::Chat::Channel)
     ::Chat::Channel.class_eval do
+      # Always define generate_auto_slug as a safe stub if it doesn't already exist
+      # This prevents NoMethodError during validation for channels created via insert_all
+      unless private_instance_methods.include?(:generate_auto_slug)
+        define_method(:generate_auto_slug) do
+          # If slug is already set, don't regenerate it
+          # This is safe because we set the slug during insert_all
+          if slug.blank? && name.present?
+            self.slug = name.parameterize
+          end
+        end
+        private :generate_auto_slug
+        Rails.logger.warn("[Lexicon] Added generate_auto_slug stub method to Chat::Channel")
+      end
+      
       alias_method :original_update!, :update!
       
       def update!(attributes = {})
         begin
           original_update!(attributes)
         rescue NoMethodError => e
-          # If the error is about generate_auto_slug (channel created via insert_all),
+          # If the error is about generate_auto_slug (shouldn't happen now, but safety net),
           # use update_columns to bypass validations and callbacks
           if e.message.include?('generate_auto_slug') && attributes.present?
             Rails.logger.warn("[Lexicon] Channel #{id} update! failed due to missing generate_auto_slug, using update_columns")
@@ -63,7 +78,7 @@ after_initialize do
         end
       end
     end
-    Rails.logger.warn("[Lexicon] Patched Chat::Channel#update! to handle insert_all channels")
+    Rails.logger.warn("[Lexicon] Patched Chat::Channel to handle insert_all channels")
   end
   
   # Hook into Chat::Api::ChannelMessagesController to capture errors
