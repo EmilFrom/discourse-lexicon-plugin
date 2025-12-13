@@ -226,26 +226,71 @@ module DiscourseLexiconPlugin
           
           # Use insert_all which bypasses callbacks and validations
           now = Time.current
-          result = ::Chat::Channel.insert_all([
-            {
-              chatable_type: 'Category',
-              chatable_id: category.id,
-              name: channel_name_final,
-              slug: slug,
-              description: channel_description,
-              status: ::Chat::Channel.statuses[:open],
-              created_at: now,
-              updated_at: now
-            }
-          ], returning: [:id])
+          
+          # Prepare all fields that might be needed
+          insert_data = {
+            chatable_type: 'Category',
+            chatable_id: category.id,
+            name: channel_name_final,
+            slug: slug,
+            description: channel_description,
+            status: ::Chat::Channel.statuses[:open],
+            created_at: now,
+            updated_at: now
+          }
+          
+          # Add optional fields if they exist in the schema
+          if ::Chat::Channel.column_names.include?('threading_enabled')
+            insert_data[:threading_enabled] = false
+          end
+          if ::Chat::Channel.column_names.include?('auto_join_users')
+            insert_data[:auto_join_users] = false
+          end
+          
+          result = ::Chat::Channel.insert_all([insert_data], returning: [:id])
           
           if result.any?
             channel_id = result.first['id']
             channel = ::Chat::Channel.find(channel_id)
             Rails.logger.warn("[Lexicon] Chat channel created via insert_all with ID: #{channel.id}")
+            Rails.logger.warn("[Lexicon] Channel attributes: #{channel.attributes.inspect}")
+            
+            # Log to debug file
+            require 'json'
+            log_path = Rails.root.join('.cursor', 'debug.log')
+            log_data = {
+              sessionId: 'debug-session',
+              runId: 'channel-creation',
+              hypothesisId: 'A',
+              location: 'projects_controller.rb:create_chat_channel',
+              message: 'Channel created via insert_all',
+              data: {
+                channel_id: channel.id,
+                channel_attributes: channel.attributes,
+                category_id: category.id,
+                user_id: current_user.id
+              },
+              timestamp: Time.current.to_i * 1000
+            }
+            begin
+              File.open(log_path, 'a') do |f|
+                f.puts(JSON.generate(log_data))
+              end
+            rescue => e
+              Rails.logger.error("[Lexicon] Failed to write debug log: #{e.message}")
+            end
+            
+            # Reload to ensure all associations are loaded
+            channel.reload
             
             # Automatically add the creator as a member
-            add_user_to_channel(channel, current_user)
+            membership = add_user_to_channel(channel, current_user)
+            Rails.logger.warn("[Lexicon] Membership created: #{membership.present?}")
+            
+            # Verify the channel is valid
+            unless channel.valid?
+              Rails.logger.error("[Lexicon] Channel validation errors: #{channel.errors.full_messages.join(', ')}")
+            end
             
             return channel
           else
@@ -270,29 +315,71 @@ module DiscourseLexiconPlugin
         chat_channel_id: channel.id
       )
 
-      return existing if existing
+      if existing
+        Rails.logger.warn("[Lexicon] User #{user.username} already a member of channel #{channel.id}")
+        return existing
+      end
 
       # Create membership with default settings
       # notification_level: 2 = "all messages" (following Discourse defaults)
       # following: true = user is following the channel
-      membership = ::Chat::UserChatChannelMembership.new(
-        user: user,
-        chat_channel: channel,
+      membership_data = {
+        user_id: user.id,
+        chat_channel_id: channel.id,
         notification_level: 2, # All messages
         following: true
-      )
+      }
+      
+      # Add optional fields if they exist
+      if ::Chat::UserChatChannelMembership.column_names.include?('last_read_message_id')
+        membership_data[:last_read_message_id] = nil
+      end
+      if ::Chat::UserChatChannelMembership.column_names.include?('muted')
+        membership_data[:muted] = false
+      end
+      if ::Chat::UserChatChannelMembership.column_names.include?('desktop_notification_level')
+        membership_data[:desktop_notification_level] = 2
+      end
+      if ::Chat::UserChatChannelMembership.column_names.include?('mobile_notification_level')
+        membership_data[:mobile_notification_level] = 2
+      end
+
+      membership = ::Chat::UserChatChannelMembership.new(membership_data)
 
       if membership.save
-        Rails.logger.warn("[Lexicon] Added user #{user.username} to channel #{channel.id}")
+        Rails.logger.warn("[Lexicon] Added user #{user.username} (ID: #{user.id}) to channel #{channel.id} (ID: #{channel.id})")
+        Rails.logger.warn("[Lexicon] Membership ID: #{membership.id}, following: #{membership.following}, notification_level: #{membership.notification_level}")
         return membership
       else
         error_msg = membership.errors.full_messages.join(", ")
         Rails.logger.error("[Lexicon] Failed to add user to channel: #{error_msg}")
+        Rails.logger.error("[Lexicon] Membership attributes: #{membership.attributes.inspect}")
+        Rails.logger.error("[Lexicon] Membership errors: #{membership.errors.inspect}")
+        
+        # Try using insert_all as fallback
+        begin
+          now = Time.current
+          insert_data = membership_data.merge(
+            created_at: now,
+            updated_at: now
+          )
+          result = ::Chat::UserChatChannelMembership.insert_all([insert_data], returning: [:id])
+          if result.any?
+            membership_id = result.first['id']
+            membership = ::Chat::UserChatChannelMembership.find(membership_id)
+            Rails.logger.warn("[Lexicon] Membership created via insert_all with ID: #{membership.id}")
+            return membership
+          end
+        rescue => insert_error
+          Rails.logger.error("[Lexicon] Failed to create membership via insert_all: #{insert_error.message}")
+        end
+        
         # Don't raise - channel creation succeeded, membership is optional
         return nil
       end
     rescue => e
       Rails.logger.error("[Lexicon] Error adding user to channel: #{e.message}")
+      Rails.logger.error("[Lexicon] Backtrace: #{e.backtrace.first(5).join("\n")}")
       # Don't raise - channel creation succeeded, membership is optional
       return nil
     end

@@ -38,6 +38,7 @@ after_initialize do
   # load File.expand_path('app/controllers/discourse_lexicon_plugin/projects_controller.rb', __dir__)
   load File.expand_path('app/deeplink_notification_module.rb', __dir__)
   load File.expand_path('app/serializers/site_serializer.rb', __dir__)
+  load File.expand_path('app/initializers/chat_message_error_handler.rb', __dir__)
 
   if SiteSetting.lexicon_image_dimensions_enabled
     load File.expand_path('app/models/lexicon_image_dimension.rb', __dir__)
