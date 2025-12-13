@@ -209,6 +209,10 @@ module DiscourseLexiconPlugin
       begin
         if channel.save
           Rails.logger.warn("[Lexicon] Chat channel created directly with ID: #{channel.id}")
+          
+          # Automatically add the creator as a member
+          add_user_to_channel(channel, current_user)
+          
           return channel
         else
           error_msg = channel.errors.full_messages.join(", ")
@@ -239,6 +243,10 @@ module DiscourseLexiconPlugin
             channel_id = result.first['id']
             channel = ::Chat::Channel.find(channel_id)
             Rails.logger.warn("[Lexicon] Chat channel created via insert_all with ID: #{channel.id}")
+            
+            # Automatically add the creator as a member
+            add_user_to_channel(channel, current_user)
+            
             return channel
           else
             raise StandardError.new("Failed to create chat channel via insert_all")
@@ -250,6 +258,43 @@ module DiscourseLexiconPlugin
     rescue => e
       Rails.logger.error("[Lexicon] Error creating chat channel: #{e.message}")
       raise
+    end
+
+    def add_user_to_channel(channel, user)
+      return unless defined?(::Chat::UserChatChannelMembership)
+      return if channel.nil? || user.nil?
+
+      # Check if membership already exists
+      existing = ::Chat::UserChatChannelMembership.find_by(
+        user_id: user.id,
+        chat_channel_id: channel.id
+      )
+
+      return existing if existing
+
+      # Create membership with default settings
+      # notification_level: 2 = "all messages" (following Discourse defaults)
+      # following: true = user is following the channel
+      membership = ::Chat::UserChatChannelMembership.new(
+        user: user,
+        chat_channel: channel,
+        notification_level: 2, # All messages
+        following: true
+      )
+
+      if membership.save
+        Rails.logger.warn("[Lexicon] Added user #{user.username} to channel #{channel.id}")
+        return membership
+      else
+        error_msg = membership.errors.full_messages.join(", ")
+        Rails.logger.error("[Lexicon] Failed to add user to channel: #{error_msg}")
+        # Don't raise - channel creation succeeded, membership is optional
+        return nil
+      end
+    rescue => e
+      Rails.logger.error("[Lexicon] Error adding user to channel: #{e.message}")
+      # Don't raise - channel creation succeeded, membership is optional
+      return nil
     end
   end
 end
