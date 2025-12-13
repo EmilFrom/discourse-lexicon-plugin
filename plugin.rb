@@ -45,11 +45,41 @@ after_initialize do
     require 'json'
     
     ::Chat::Api::ChannelMessagesController.class_eval do
-      rescue_from StandardError, with: :log_lexicon_chat_error
+      before_action :log_lexicon_chat_create_attempt, only: [:create]
+      around_action :log_lexicon_chat_errors, only: [:create]
 
       private
 
-      def log_lexicon_chat_error(exception)
+      def log_lexicon_chat_create_attempt
+        log_path = Rails.root.join('.cursor', 'debug.log')
+        log_data = {
+          sessionId: 'debug-session',
+          runId: 'message-attempt',
+          hypothesisId: 'A',
+          location: 'Chat::Api::ChannelMessagesController#create',
+          message: 'Attempting to create chat message',
+          data: {
+            channel_id: params[:chat_channel_id] || params[:id],
+            params: params.to_unsafe_h.except('controller', 'action'),
+            current_user_id: current_user&.id
+          },
+          timestamp: Time.current.to_i * 1000
+        }
+        
+        begin
+          File.open(log_path, 'a') do |f|
+            f.puts(JSON.generate(log_data))
+          end
+        rescue => e
+          Rails.logger.error("[Lexicon] Failed to write debug log: #{e.message}")
+        end
+        
+        Rails.logger.warn("[Lexicon] Attempting to create message in channel #{params[:chat_channel_id] || params[:id]}")
+      end
+
+      def log_lexicon_chat_errors
+        yield
+      rescue => exception
         # Log to our debug log file
         log_path = Rails.root.join('.cursor', 'debug.log')
         log_data = {
@@ -77,10 +107,13 @@ after_initialize do
         end
 
         # Also log to Rails logger
+        Rails.logger.error("[Lexicon] ========================================")
         Rails.logger.error("[Lexicon] Chat message creation error:")
         Rails.logger.error("[Lexicon] Channel ID: #{params[:chat_channel_id] || params[:id]}")
         Rails.logger.error("[Lexicon] Error: #{exception.class.name}: #{exception.message}")
-        Rails.logger.error("[Lexicon] Backtrace: #{exception.backtrace&.first(10)&.join("\n")}")
+        Rails.logger.error("[Lexicon] Full backtrace:")
+        Rails.logger.error(exception.backtrace&.join("\n"))
+        Rails.logger.error("[Lexicon] ========================================")
 
         # Re-raise to let Discourse handle it normally
         raise exception
