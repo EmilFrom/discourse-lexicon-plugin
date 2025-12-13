@@ -39,6 +39,33 @@ after_initialize do
   load File.expand_path('app/deeplink_notification_module.rb', __dir__)
   load File.expand_path('app/serializers/site_serializer.rb', __dir__)
   
+  # CRITICAL FIX: Patch Chat::Channel to handle updates for channels created via insert_all
+  # The issue is that insert_all bypasses callbacks, so generate_auto_slug doesn't exist
+  # When Discourse tries to update the channel, it fails. We'll patch update! to handle this.
+  if defined?(::Chat::Channel)
+    ::Chat::Channel.class_eval do
+      alias_method :original_update!, :update!
+      
+      def update!(attributes = {})
+        begin
+          original_update!(attributes)
+        rescue NoMethodError => e
+          # If the error is about generate_auto_slug (channel created via insert_all),
+          # use update_columns to bypass validations and callbacks
+          if e.message.include?('generate_auto_slug') && attributes.present?
+            Rails.logger.warn("[Lexicon] Channel #{id} update! failed due to missing generate_auto_slug, using update_columns")
+            update_columns(attributes.stringify_keys)
+            reload
+            return self
+          else
+            raise
+          end
+        end
+      end
+    end
+    Rails.logger.warn("[Lexicon] Patched Chat::Channel#update! to handle insert_all channels")
+  end
+  
   # Hook into Chat::Api::ChannelMessagesController to capture errors
   # when messages are sent to channels created by our plugin
   if defined?(::Chat::Api::ChannelMessagesController)

@@ -283,6 +283,8 @@ module DiscourseLexiconPlugin
             # Reload to ensure all associations are loaded
             channel.reload
             
+            Rails.logger.warn("[Lexicon] Channel created via insert_all, slug: #{channel.slug}")
+            
             # Automatically add the creator as a member
             membership = add_user_to_channel(channel, current_user)
             Rails.logger.warn("[Lexicon] Membership created: #{membership.present?}")
