@@ -26,7 +26,12 @@ module DiscourseLexiconPlugin
         category = build_category(norm)
 
         Rails.logger.warn("[Lexicon] Setting permissions...")
-        category.set_permissions({ 0 => 1 })
+        # Set permissions: everyone can see (0 => 1), plus any specified groups
+        permissions = { 0 => 1 } # Everyone can see
+        norm[:group_ids].each do |group_id|
+          permissions[group_id] = 1 # Group members can see
+        end
+        category.set_permissions(permissions)
         category.save!
       end
 
@@ -41,6 +46,17 @@ module DiscourseLexiconPlugin
         end
       end
 
+      # Add groups to category and their members to chat channel
+      if norm[:group_ids].any?
+        begin
+          add_groups_to_project(category, chat_channel, norm[:group_ids])
+        rescue => group_error
+          Rails.logger.warn("[Lexicon] Failed to add groups to project: #{group_error.message}")
+          Rails.logger.warn(group_error.backtrace.join("\n"))
+          # Don't fail the whole request if group addition fails
+        end
+      end
+
       response = {
         category: {
           id: category.id,
@@ -51,6 +67,12 @@ module DiscourseLexiconPlugin
       }
       response[:chat_channel_id] = chat_channel&.id if chat_channel
       response[:warning] = chat_warning if chat_warning
+      
+      # Include group information if groups were added
+      if norm[:group_ids].any?
+        groups = Group.where(id: norm[:group_ids])
+        response[:groups] = groups.map { |g| { id: g.id, name: g.name } }
+      end
 
       render json: response
     rescue => e
@@ -72,6 +94,18 @@ module DiscourseLexiconPlugin
       desc = params[:description].to_s.strip
       if desc.length > 1000
         return "Description is too long (max 1000 characters)"
+      end
+
+      # Validate group_ids if provided
+      if params[:group_ids].present?
+        group_ids = Array(params[:group_ids]).map(&:to_i).reject(&:zero?)
+        if group_ids.any?
+          invalid_groups = Group.where(id: group_ids).pluck(:id)
+          missing_ids = group_ids - invalid_groups
+          if missing_ids.any?
+            return "Invalid group IDs: #{missing_ids.join(', ')}"
+          end
+        end
       end
 
       # Validate chat channel name if provided
@@ -98,6 +132,12 @@ module DiscourseLexiconPlugin
       color = params[:color].to_s.strip.downcase
       color = "0088cc" unless color.match?(/\A[0-9a-f]{6}\z/)
 
+      group_ids = if params[:group_ids].present?
+                    Array(params[:group_ids]).map(&:to_i).reject(&:zero?)
+                  else
+                    []
+                  end
+
       {
         name: name,
         description: description,
@@ -105,7 +145,8 @@ module DiscourseLexiconPlugin
         text_color: "ffffff",
         create_chat: ActiveModel::Type::Boolean.new.cast(params[:create_chat]),
         chat_channel_name: params[:chat_channel_name].to_s.strip.presence,
-        chat_channel_description: params[:chat_channel_description].to_s.strip.presence
+        chat_channel_description: params[:chat_channel_description].to_s.strip.presence,
+        group_ids: group_ids
       }
     end
 
@@ -384,6 +425,38 @@ module DiscourseLexiconPlugin
       Rails.logger.error("[Lexicon] Backtrace: #{e.backtrace.first(5).join("\n")}")
       # Don't raise - channel creation succeeded, membership is optional
       return nil
+    end
+
+    def add_groups_to_project(category, channel, group_ids)
+      return if group_ids.blank?
+
+      Rails.logger.warn("[Lexicon] Adding groups to project: #{group_ids.inspect}")
+
+      groups = Group.where(id: group_ids)
+      if groups.count != group_ids.count
+        found_ids = groups.pluck(:id)
+        missing_ids = group_ids - found_ids
+        Rails.logger.warn("[Lexicon] Some groups not found: #{missing_ids.inspect}")
+      end
+
+      groups.each do |group|
+        Rails.logger.warn("[Lexicon] Processing group: #{group.name} (ID: #{group.id})")
+
+        # Add all group members to the chat channel if it exists
+        if channel.present?
+          Rails.logger.warn("[Lexicon] Adding #{group.users.count} members from group '#{group.name}' to channel #{channel.id}")
+          
+          group.users.find_each do |user|
+            add_user_to_channel(channel, user)
+          end
+          
+          Rails.logger.warn("[Lexicon] Finished adding members from group '#{group.name}' to channel")
+        else
+          Rails.logger.warn("[Lexicon] No chat channel to add group members to")
+        end
+      end
+
+      Rails.logger.warn("[Lexicon] Finished adding groups to project")
     end
   end
 end
