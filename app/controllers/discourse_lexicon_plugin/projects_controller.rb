@@ -193,20 +193,59 @@ module DiscourseLexiconPlugin
 
       # Fallback: Create channel directly using ActiveRecord
       # This bypasses the API layer and CSRF protection
+      channel_name_final = channel_name.presence || "General"
+      
+      # Generate slug from name (similar to how Discourse does it)
+      slug = channel_name_final.parameterize
+      
       channel = ::Chat::Channel.new(
         chatable: category,
-        name: channel_name.presence || "General",
+        name: channel_name_final,
+        slug: slug,
         description: channel_description,
         status: ::Chat::Channel.statuses[:open]
       )
       
-      if channel.save
-        Rails.logger.warn("[Lexicon] Chat channel created directly with ID: #{channel.id}")
-        return channel
-      else
-        error_msg = channel.errors.full_messages.join(", ")
-        Rails.logger.error("[Lexicon] Failed to create chat channel: #{error_msg}")
-        raise StandardError.new("Failed to create chat channel: #{error_msg}")
+      begin
+        if channel.save
+          Rails.logger.warn("[Lexicon] Chat channel created directly with ID: #{channel.id}")
+          return channel
+        else
+          error_msg = channel.errors.full_messages.join(", ")
+          Rails.logger.error("[Lexicon] Failed to create chat channel: #{error_msg}")
+          raise StandardError.new("Failed to create chat channel: #{error_msg}")
+        end
+      rescue => save_error
+        # If save fails due to missing callbacks (like generate_auto_slug), use insert_all to bypass
+        if save_error.message.include?('generate_auto_slug') || save_error.message.include?('undefined method')
+          Rails.logger.warn("[Lexicon] Save failed due to callback (#{save_error.message}), using insert_all to bypass")
+          
+          # Use insert_all which bypasses callbacks and validations
+          now = Time.current
+          result = ::Chat::Channel.insert_all([
+            {
+              chatable_type: 'Category',
+              chatable_id: category.id,
+              name: channel_name_final,
+              slug: slug,
+              description: channel_description,
+              status: ::Chat::Channel.statuses[:open],
+              created_at: now,
+              updated_at: now
+            }
+          ], returning: [:id])
+          
+          if result.any?
+            channel_id = result.first['id']
+            channel = ::Chat::Channel.find(channel_id)
+            Rails.logger.warn("[Lexicon] Chat channel created via insert_all with ID: #{channel.id}")
+            return channel
+          else
+            raise StandardError.new("Failed to create chat channel via insert_all")
+          end
+        else
+          raise
+        end
       end
     rescue => e
       Rails.logger.error("[Lexicon] Error creating chat channel: #{e.message}")
