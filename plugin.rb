@@ -28,7 +28,35 @@ module ::DiscourseLexiconPlugin
 end
 
 # Load CORS middleware before engine so it's available in engine initializer
-load File.expand_path('lib/discourse-lexicon-plugin/cors_middleware.rb', __dir__)
+# #region agent log
+begin
+  File.open('/Users/emil/Documents/Taenketanken/discourse/.cursor/debug.log', 'a') do |f|
+    f.puts({sessionId: 'debug-session', runId: 'migration-debug', hypothesisId: 'H5', location: 'plugin.rb:31', message: 'Loading CORS middleware file', data: {}, timestamp: Time.now.to_i * 1000}.to_json)
+  end
+rescue => e
+end
+# #endregion
+begin
+  load File.expand_path('lib/discourse-lexicon-plugin/cors_middleware.rb', __dir__)
+  # #region agent log
+  begin
+    File.open('/Users/emil/Documents/Taenketanken/discourse/.cursor/debug.log', 'a') do |f|
+      f.puts({sessionId: 'debug-session', runId: 'migration-debug', hypothesisId: 'H5', location: 'plugin.rb:34', message: 'CORS middleware file loaded successfully', data: {}, timestamp: Time.now.to_i * 1000}.to_json)
+    end
+  rescue => e
+  end
+  # #endregion
+rescue => e
+  # #region agent log
+  begin
+    File.open('/Users/emil/Documents/Taenketanken/discourse/.cursor/debug.log', 'a') do |f|
+      f.puts({sessionId: 'debug-session', runId: 'migration-debug', hypothesisId: 'H5', location: 'plugin.rb:38', message: 'Failed to load CORS middleware file', data: {error: e.class.name, message: e.message}, timestamp: Time.now.to_i * 1000}.to_json)
+    end
+  rescue => e2
+  end
+  # #endregion
+  raise
+end
 
 load File.expand_path('lib/discourse-lexicon-plugin/engine.rb', __dir__)
 
