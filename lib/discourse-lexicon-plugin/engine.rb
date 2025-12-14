@@ -10,6 +10,24 @@ module DiscourseLexiconPlugin
     # The middleware class is loaded in plugin.rb before the engine
     initializer 'discourse_lexicon_plugin.cors_middleware', before: :build_middleware_stack do |app|
       begin
+        # Skip middleware loading during rake tasks (including migrations)
+        if defined?(Rake) && Rake.respond_to?(:application)
+          begin
+            if Rake.application.top_level_tasks.any?
+              Rails.logger.debug("[Lexicon Plugin] Skipping CORS middleware during rake task") if defined?(Rails) && Rails.logger
+              next
+            end
+          rescue
+            # If we can't check rake tasks, continue anyway
+          end
+        end
+        
+        # Only add middleware if we have a proper Rails application
+        unless app.config.respond_to?(:middleware)
+          Rails.logger.debug("[Lexicon Plugin] Skipping CORS middleware - no middleware config") if defined?(Rails) && Rails.logger
+          next
+        end
+        
         # Insert before ActionDispatch::Static to catch all requests early
         if defined?(ActionDispatch::Static)
           app.config.middleware.insert_before ActionDispatch::Static, DiscourseLexiconPlugin::CorsMiddleware
@@ -21,7 +39,8 @@ module DiscourseLexiconPlugin
         end
       rescue => e
         # Don't fail initialization if middleware can't be loaded
-        Rails.logger.warn("[Lexicon Plugin] Failed to add CORS middleware: #{e.message}") if defined?(Rails) && Rails.logger
+        # This is especially important during migrations
+        Rails.logger.debug("[Lexicon Plugin] Skipped CORS middleware: #{e.class} - #{e.message}") if defined?(Rails) && Rails.logger
       end
     end
 
