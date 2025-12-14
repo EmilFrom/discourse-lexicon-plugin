@@ -45,13 +45,10 @@ after_initialize do
   if defined?(Discourse::Application) && Discourse::Application.config.respond_to?(:middleware)
     begin
       load File.expand_path('lib/discourse-lexicon-plugin/cors_middleware.rb', __dir__)
-      # Use insert_after Rack::Head to ensure it runs early but after basic middleware
-      if defined?(Rack::Head)
-        Discourse::Application.config.middleware.insert_after Rack::Head, DiscourseLexiconPlugin::CorsMiddleware
-      else
-        Discourse::Application.config.middleware.use DiscourseLexiconPlugin::CorsMiddleware
-      end
-      Rails.logger.info("[Lexicon Plugin] CORS middleware loaded") if defined?(Rails) && Rails.logger
+      # Insert at the very beginning of the middleware stack to catch all requests
+      # This ensures OPTIONS requests are handled before Discourse's router processes them
+      Discourse::Application.config.middleware.insert_before 0, DiscourseLexiconPlugin::CorsMiddleware
+      Rails.logger.info("[Lexicon Plugin] CORS middleware loaded at position 0") if defined?(Rails) && Rails.logger
     rescue LoadError, NameError => e
       # Silently skip if middleware can't be loaded (e.g., during migrations)
       # This is safe because the middleware only affects HTTP requests
