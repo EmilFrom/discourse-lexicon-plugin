@@ -59,9 +59,17 @@ module DiscourseLexiconPlugin
 
     def get_allowed_origins
       # Get from site settings if available
-      allowed = if defined?(SiteSetting) && SiteSetting.respond_to?(:allowed_user_api_auth_redirects)
-        SiteSetting.allowed_user_api_auth_redirects&.split("\n") || []
-      else
+      # Use safe navigation to avoid errors during migrations
+      allowed = begin
+        if defined?(SiteSetting) && SiteSetting.respond_to?(:allowed_user_api_auth_redirects)
+          value = SiteSetting.allowed_user_api_auth_redirects
+          value.present? ? value.split("\n") : []
+        else
+          []
+        end
+      rescue => e
+        # During migrations or when SiteSetting is not available, return empty array
+        Rails.logger.debug("[Lexicon CORS] Could not access SiteSetting: #{e.message}") if defined?(Rails)
         []
       end
       

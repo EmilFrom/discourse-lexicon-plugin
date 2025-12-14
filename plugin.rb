@@ -38,11 +38,28 @@ after_initialize do
   # load File.expand_path('app/controllers/discourse_lexicon_plugin/projects_controller.rb', __dir__)
   load File.expand_path('app/deeplink_notification_module.rb', __dir__)
   load File.expand_path('app/serializers/site_serializer.rb', __dir__)
-  load File.expand_path('lib/discourse-lexicon-plugin/cors_middleware.rb', __dir__)
   
   # Add CORS middleware for web requests
   # This handles CORS for all API endpoints, including core Discourse endpoints like /site.json
-  Discourse::Application.config.middleware.insert_before 0, DiscourseLexiconPlugin::CorsMiddleware
+  # Only add middleware if the application is fully initialized (not during migrations)
+  if defined?(Discourse::Application) && Discourse::Application.config.respond_to?(:middleware)
+    begin
+      load File.expand_path('lib/discourse-lexicon-plugin/cors_middleware.rb', __dir__)
+      # Use insert_after Rack::Head to ensure it runs early but after basic middleware
+      if defined?(Rack::Head)
+        Discourse::Application.config.middleware.insert_after Rack::Head, DiscourseLexiconPlugin::CorsMiddleware
+      else
+        Discourse::Application.config.middleware.use DiscourseLexiconPlugin::CorsMiddleware
+      end
+      Rails.logger.info("[Lexicon Plugin] CORS middleware loaded") if defined?(Rails) && Rails.logger
+    rescue LoadError, NameError => e
+      # Silently skip if middleware can't be loaded (e.g., during migrations)
+      # This is safe because the middleware only affects HTTP requests
+    rescue => e
+      # For other errors, log but don't fail initialization
+      Rails.logger.debug("[Lexicon Plugin] CORS middleware error: #{e.message}") if defined?(Rails) && Rails.logger
+    end
+  end
   
   # CRITICAL FIX: Patch Chat::Channel to handle updates for channels created via insert_all
   # The issue is that insert_all bypasses callbacks, so generate_auto_slug doesn't exist
