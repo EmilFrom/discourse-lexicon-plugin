@@ -15,7 +15,7 @@ module DiscourseLexiconPlugin
       # Handle OPTIONS preflight requests - must be done BEFORE calling the app
       # This ensures we catch OPTIONS requests before Discourse's router rejects them
       if request_method == 'OPTIONS'
-        Rails.logger.debug("[Lexicon CORS] Handling OPTIONS preflight for #{path} from origin #{origin}") if defined?(Rails) && Rails.logger
+        Rails.logger.info("[Lexicon CORS] Handling OPTIONS preflight for #{path} from origin #{origin}") if defined?(Rails) && Rails.logger
         return handle_preflight(origin)
       end
 

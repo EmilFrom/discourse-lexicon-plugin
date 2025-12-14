@@ -42,20 +42,38 @@ after_initialize do
   # Add CORS middleware for web requests
   # This handles CORS for all API endpoints, including core Discourse endpoints like /site.json
   # Only add middleware if the application is fully initialized (not during migrations)
-  if defined?(Discourse::Application) && Discourse::Application.config.respond_to?(:middleware)
-    begin
+  begin
+    # Check if we're in a rake task or migration context
+    if defined?(Rake) && Rake.respond_to?(:application) && Rake.application.top_level_tasks.any?
+      Rails.logger.debug("[Lexicon Plugin] Skipping CORS middleware load during rake task") if defined?(Rails) && Rails.logger
+    elsif defined?(Rails) && Rails.application && Rails.application.config.respond_to?(:middleware)
       load File.expand_path('lib/discourse-lexicon-plugin/cors_middleware.rb', __dir__)
-      # Insert at the very beginning of the middleware stack to catch all requests
-      # This ensures OPTIONS requests are handled before Discourse's router processes them
-      Discourse::Application.config.middleware.insert_before 0, DiscourseLexiconPlugin::CorsMiddleware
-      Rails.logger.info("[Lexicon Plugin] CORS middleware loaded at position 0") if defined?(Rails) && Rails.logger
-    rescue LoadError, NameError => e
-      # Silently skip if middleware can't be loaded (e.g., during migrations)
-      # This is safe because the middleware only affects HTTP requests
-    rescue => e
-      # For other errors, log but don't fail initialization
-      Rails.logger.debug("[Lexicon Plugin] CORS middleware error: #{e.message}") if defined?(Rails) && Rails.logger
+      
+      # Try to insert at the beginning of the middleware stack
+      # Use insert_before with ActionDispatch::Static as a known early middleware
+      # If that fails, try inserting at position 0
+      begin
+        if defined?(ActionDispatch::Static)
+          Rails.application.config.middleware.insert_before ActionDispatch::Static, DiscourseLexiconPlugin::CorsMiddleware
+          Rails.logger.info("[Lexicon Plugin] CORS middleware loaded before ActionDispatch::Static") if defined?(Rails) && Rails.logger
+        else
+          Rails.application.config.middleware.insert_before 0, DiscourseLexiconPlugin::CorsMiddleware
+          Rails.logger.info("[Lexicon Plugin] CORS middleware loaded at position 0") if defined?(Rails) && Rails.logger
+        end
+      rescue => e
+        # Fallback: use 'use' to add at the end (less ideal but should work)
+        Rails.application.config.middleware.use DiscourseLexiconPlugin::CorsMiddleware
+        Rails.logger.warn("[Lexicon Plugin] CORS middleware added with 'use' (fallback): #{e.message}") if defined?(Rails) && Rails.logger
+      end
+    else
+      Rails.logger.debug("[Lexicon Plugin] Skipping CORS middleware load - application not ready") if defined?(Rails) && Rails.logger
     end
+  rescue LoadError, NameError => e
+    # Silently skip if middleware can't be loaded (e.g., during migrations)
+    Rails.logger.debug("[Lexicon Plugin] CORS middleware load failed: #{e.class} - #{e.message}") if defined?(Rails) && Rails.logger
+  rescue => e
+    # For other errors, log but don't fail initialization
+    Rails.logger.warn("[Lexicon Plugin] CORS middleware error: #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}") if defined?(Rails) && Rails.logger
   end
   
   # CRITICAL FIX: Patch Chat::Channel to handle updates for channels created via insert_all
