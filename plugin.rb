@@ -38,6 +38,11 @@ after_initialize do
   # load File.expand_path('app/controllers/discourse_lexicon_plugin/projects_controller.rb', __dir__)
   load File.expand_path('app/deeplink_notification_module.rb', __dir__)
   load File.expand_path('app/serializers/site_serializer.rb', __dir__)
+  load File.expand_path('lib/discourse-lexicon-plugin/cors_middleware.rb', __dir__)
+  
+  # Add CORS middleware for web requests
+  # This handles CORS for all API endpoints, including core Discourse endpoints like /site.json
+  Discourse::Application.config.middleware.insert_before 0, DiscourseLexiconPlugin::CorsMiddleware
   
   # CRITICAL FIX: Patch Chat::Channel to handle updates for channels created via insert_all
   # The issue is that insert_all bypasses callbacks, so generate_auto_slug doesn't exist

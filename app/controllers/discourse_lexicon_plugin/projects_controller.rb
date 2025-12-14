@@ -2,6 +2,8 @@ module DiscourseLexiconPlugin
   class ProjectsController < ::ApplicationController
     skip_before_action :verify_authenticity_token
     before_action :ensure_logged_in
+    before_action :set_cors_headers
+    before_action :handle_options_request
 
     def create
       Rails.logger.warn("[Lexicon] ProjectsController#create called")
@@ -457,6 +459,52 @@ module DiscourseLexiconPlugin
       end
 
       Rails.logger.warn("[Lexicon] Finished adding groups to project")
+    end
+
+    def set_cors_headers
+      origin = request.headers['Origin']
+      return unless origin.present?
+
+      # Get allowed origins from site settings
+      allowed_origins = get_allowed_origins
+
+      # Check if origin is allowed
+      if origin_allowed?(origin, allowed_origins)
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, User-Api-Key, User-Api-Client-Id, X-Requested-With'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Max-Age'] = '86400' # 24 hours
+      end
+    end
+
+    def handle_options_request
+      if request.method == 'OPTIONS'
+        head :ok
+        return
+      end
+    end
+
+    def get_allowed_origins
+      allowed = SiteSetting.allowed_user_api_auth_redirects&.split("\n") || []
+      # Add common development origins
+      allowed << "http://localhost:8081"
+      allowed << "http://localhost:3000"
+      allowed << "http://127.0.0.1:8081"
+      allowed << "http://127.0.0.1:3000"
+      allowed.compact.uniq
+    end
+
+    def origin_allowed?(origin, allowed_origins)
+      allowed_origins.any? do |allowed|
+        if allowed.include?('*')
+          # Simple wildcard matching
+          pattern = allowed.gsub('*', '.*')
+          origin.match?(/\A#{pattern}\z/)
+        else
+          origin == allowed
+        end
+      end
     end
   end
 end
