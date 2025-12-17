@@ -27,25 +27,21 @@ module DiscourseLexiconPlugin
     initializer 'discourse_lexicon_plugin.cors_middleware', before: :build_middleware_stack do |app|
       # Skip entirely if in migration context
       if DiscourseLexiconPlugin::Engine.in_migration_context?
-        Rails.logger.debug("[Lexicon Plugin] Skipping CORS middleware - migration context") if defined?(Rails) && Rails.logger
         next
       end
 
       # Skip if middleware class is not defined
       unless defined?(DiscourseLexiconPlugin::CorsMiddleware)
-        Rails.logger.debug("[Lexicon Plugin] Skipping CORS middleware - class not defined") if defined?(Rails) && Rails.logger
         next
       end
 
       # Skip if already added
       if @@cors_middleware_added
-        Rails.logger.debug("[Lexicon Plugin] Skipping CORS middleware - already added") if defined?(Rails) && Rails.logger
         next
       end
 
       # Only add middleware if we have a proper Rails application
       unless app.config.respond_to?(:middleware)
-        Rails.logger.debug("[Lexicon Plugin] Skipping CORS middleware - no middleware config") if defined?(Rails) && Rails.logger
         next
       end
 
@@ -57,20 +53,56 @@ module DiscourseLexiconPlugin
           next
         end
 
-        # Insert before ActionDispatch::Static to catch all requests early
-        if defined?(ActionDispatch::Static)
-          app.config.middleware.insert_before ActionDispatch::Static, DiscourseLexiconPlugin::CorsMiddleware
-          @@cors_middleware_added = true
-          Rails.logger.info("[Lexicon Plugin] CORS middleware loaded before ActionDispatch::Static") if defined?(Rails) && Rails.logger
-        else
-          # Fallback: insert at the beginning
-          app.config.middleware.insert 0, DiscourseLexiconPlugin::CorsMiddleware
-          @@cors_middleware_added = true
-          Rails.logger.info("[Lexicon Plugin] CORS middleware loaded at position 0") if defined?(Rails) && Rails.logger
+        # Try to insert early in the middleware stack for CORS preflight handling
+        # We need to be early to catch OPTIONS requests before the router rejects them
+        inserted = false
+
+        # Try inserting before Rack::Head (almost always present)
+        begin
+          if app.config.middleware.include?(Rack::Head)
+            app.config.middleware.insert_before Rack::Head, DiscourseLexiconPlugin::CorsMiddleware
+            inserted = true
+            Rails.logger.info("[Lexicon Plugin] CORS middleware loaded before Rack::Head") if defined?(Rails) && Rails.logger
+          end
+        rescue => e
+          # Continue to fallback
         end
+
+        # Try inserting before ActionDispatch::Static if it exists in the stack
+        if !inserted
+          begin
+            if app.config.middleware.include?(ActionDispatch::Static)
+              app.config.middleware.insert_before ActionDispatch::Static, DiscourseLexiconPlugin::CorsMiddleware
+              inserted = true
+              Rails.logger.info("[Lexicon Plugin] CORS middleware loaded before ActionDispatch::Static") if defined?(Rails) && Rails.logger
+            end
+          rescue => e
+            # Continue to fallback
+          end
+        end
+
+        # Final fallback: use 'unshift' or 'insert 0' to prepend
+        if !inserted
+          begin
+            app.config.middleware.unshift DiscourseLexiconPlugin::CorsMiddleware
+            inserted = true
+            Rails.logger.info("[Lexicon Plugin] CORS middleware loaded via unshift") if defined?(Rails) && Rails.logger
+          rescue => e
+            # Try insert 0 as last resort
+            begin
+              app.config.middleware.insert(0, DiscourseLexiconPlugin::CorsMiddleware)
+              inserted = true
+              Rails.logger.info("[Lexicon Plugin] CORS middleware loaded at position 0") if defined?(Rails) && Rails.logger
+            rescue => e2
+              Rails.logger.warn("[Lexicon Plugin] All middleware insertion methods failed") if defined?(Rails) && Rails.logger
+            end
+          end
+        end
+
+        @@cors_middleware_added = inserted
       rescue => e
         # Don't fail initialization if middleware can't be loaded
-        Rails.logger.debug("[Lexicon Plugin] Failed to add CORS middleware: #{e.class} - #{e.message}") if defined?(Rails) && Rails.logger
+        Rails.logger.warn("[Lexicon Plugin] Failed to add CORS middleware: #{e.class} - #{e.message}") if defined?(Rails) && Rails.logger
       end
     end
 
