@@ -44,7 +44,7 @@ module DiscourseLexiconPlugin
         headers = {
           'Access-Control-Allow-Origin' => origin,
           'Access-Control-Allow-Methods' => 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
-          'Access-Control-Allow-Headers' => 'Content-Type, Authorization, User-Api-Key, User-Api-Client-Id, X-Requested-With, Accept',
+          'Access-Control-Allow-Headers' => 'Content-Type, Authorization, User-Api-Key, User-Api-Client-Id, X-Requested-With, Accept, User-Agent, Origin, Cache-Control, Pragma',
           'Access-Control-Allow-Credentials' => 'true',
           'Access-Control-Max-Age' => '86400',
           'Content-Length' => '0',
