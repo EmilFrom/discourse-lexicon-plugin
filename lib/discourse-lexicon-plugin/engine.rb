@@ -34,8 +34,10 @@ module DiscourseLexiconPlugin
         
         # #region agent log
         begin
+          env_value = begin; ENV['RAILS_ENV']; rescue; 'unknown'; end
+          argv0_value = begin; $0; rescue; 'unknown'; end
           File.open(log_path, 'a') do |f|
-            f.puts({sessionId: 'debug-session', runId: 'migration-debug-v4', hypothesisId: 'H1,H6', location: 'engine.rb:24', message: 'Initializer entry', data: {already_added: @@cors_middleware_added, cors_middleware_defined: defined?(DiscourseLexiconPlugin::CorsMiddleware), rake_defined: defined?(Rake), env: ENV['RAILS_ENV'] rescue 'unknown', argv0: $0 rescue 'unknown'}, timestamp: Time.now.to_i * 1000}.to_json)
+            f.puts({sessionId: 'debug-session', runId: 'migration-debug-v4', hypothesisId: 'H1,H6', location: 'engine.rb:24', message: 'Initializer entry', data: {already_added: @@cors_middleware_added, cors_middleware_defined: defined?(DiscourseLexiconPlugin::CorsMiddleware), rake_defined: defined?(Rake), env: env_value, argv0: argv0_value}, timestamp: Time.now.to_i * 1000}.to_json)
           end
         rescue => e
           # Ignore log failures
