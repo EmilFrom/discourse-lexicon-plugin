@@ -28,34 +28,77 @@ module ::DiscourseLexiconPlugin
 end
 
 # Load CORS middleware before engine so it's available in engine initializer
-# #region agent log
+# Only load if we're not in a rake task context (to avoid issues during migrations)
+log_path = '/var/discourse/shared/standalone/.cursor/debug.log'
 begin
-  File.open('/Users/emil/Documents/Taenketanken/discourse/.cursor/debug.log', 'a') do |f|
-    f.puts({sessionId: 'debug-session', runId: 'migration-debug', hypothesisId: 'H5', location: 'plugin.rb:31', message: 'Loading CORS middleware file', data: {}, timestamp: Time.now.to_i * 1000}.to_json)
-  end
-rescue => e
-end
-# #endregion
-begin
-  load File.expand_path('lib/discourse-lexicon-plugin/cors_middleware.rb', __dir__)
-  # #region agent log
-  begin
-    File.open('/Users/emil/Documents/Taenketanken/discourse/.cursor/debug.log', 'a') do |f|
-      f.puts({sessionId: 'debug-session', runId: 'migration-debug', hypothesisId: 'H5', location: 'plugin.rb:34', message: 'CORS middleware file loaded successfully', data: {}, timestamp: Time.now.to_i * 1000}.to_json)
+  should_load = true
+  
+  # Multiple checks to detect migration/rake context
+  # Check 1: Program name
+  if $0 && ($0.include?('rake') || ($0.include?('rails') && !$0.include?('server')))
+    should_load = false
+    begin
+      File.open(log_path, 'a') do |f|
+        f.puts({sessionId: 'debug-session', runId: 'migration-debug-v4', hypothesisId: 'H5', location: 'plugin.rb:32', message: 'Skipping CORS middleware load - program name check', data: {program_name: $0}, timestamp: Time.now.to_i * 1000}.to_json)
+      end
+    rescue => e
     end
-  rescue => e
   end
-  # #endregion
+  
+  # Check 2: ARGV
+  if should_load && ARGV.any? { |arg| arg.include?('db:migrate') || arg.include?('rake') }
+    should_load = false
+    begin
+      File.open(log_path, 'a') do |f|
+        f.puts({sessionId: 'debug-session', runId: 'migration-debug-v4', hypothesisId: 'H5', location: 'plugin.rb:40', message: 'Skipping CORS middleware load - ARGV check', data: {argv: ARGV}, timestamp: Time.now.to_i * 1000}.to_json)
+      end
+    rescue => e
+    end
+  end
+  
+  # Check 3: Rake tasks (if Rake is available)
+  if should_load && defined?(Rake) && Rake.respond_to?(:application)
+    begin
+      tasks = Rake.application.top_level_tasks rescue []
+      if tasks.any?
+        should_load = false
+        begin
+          File.open(log_path, 'a') do |f|
+            f.puts({sessionId: 'debug-session', runId: 'migration-debug-v4', hypothesisId: 'H5', location: 'plugin.rb:48', message: 'Skipping CORS middleware load - rake task detected', data: {tasks: tasks}, timestamp: Time.now.to_i * 1000}.to_json)
+          end
+        rescue => e
+        end
+      end
+    rescue => e
+      # If we can't check, continue (will load middleware)
+    end
+  end
+  
+  if should_load
+    begin
+      File.open(log_path, 'a') do |f|
+        f.puts({sessionId: 'debug-session', runId: 'migration-debug-v4', hypothesisId: 'H5', location: 'plugin.rb:56', message: 'Loading CORS middleware file', data: {}, timestamp: Time.now.to_i * 1000}.to_json)
+      end
+    rescue => e
+    end
+    load File.expand_path('lib/discourse-lexicon-plugin/cors_middleware.rb', __dir__)
+    begin
+      File.open(log_path, 'a') do |f|
+        f.puts({sessionId: 'debug-session', runId: 'migration-debug-v4', hypothesisId: 'H5', location: 'plugin.rb:59', message: 'CORS middleware file loaded successfully', data: {}, timestamp: Time.now.to_i * 1000}.to_json)
+      end
+    rescue => e
+    end
+  end
 rescue => e
-  # #region agent log
+  # Don't fail plugin loading if middleware can't be loaded
+  # This is especially important during migrations - swallow ALL errors
   begin
-    File.open('/Users/emil/Documents/Taenketanken/discourse/.cursor/debug.log', 'a') do |f|
-      f.puts({sessionId: 'debug-session', runId: 'migration-debug', hypothesisId: 'H5', location: 'plugin.rb:38', message: 'Failed to load CORS middleware file', data: {error: e.class.name, message: e.message}, timestamp: Time.now.to_i * 1000}.to_json)
+    File.open(log_path, 'a') do |f|
+      f.puts({sessionId: 'debug-session', runId: 'migration-debug-v4', hypothesisId: 'H5', location: 'plugin.rb:65', message: 'Failed to load CORS middleware file - swallowed', data: {error: e.class.name, message: e.message}, timestamp: Time.now.to_i * 1000}.to_json)
     end
   rescue => e2
   end
-  # #endregion
-  raise
+  # Silently continue - middleware will just not be available
 end
 
 load File.expand_path('lib/discourse-lexicon-plugin/engine.rb', __dir__)
