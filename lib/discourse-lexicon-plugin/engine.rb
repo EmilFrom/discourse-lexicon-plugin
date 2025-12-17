@@ -43,9 +43,9 @@ module DiscourseLexiconPlugin
           # Ignore log failures
         end
         # #endregion
-      
-      # If middleware class is not defined, skip entirely (likely during migrations)
-      unless defined?(DiscourseLexiconPlugin::CorsMiddleware)
+        
+        # If middleware class is not defined, skip entirely (likely during migrations)
+        unless defined?(DiscourseLexiconPlugin::CorsMiddleware)
         # #region agent log
         begin
           File.open(log_path, 'a') do |f|
@@ -54,11 +54,11 @@ module DiscourseLexiconPlugin
         rescue => e
         end
         # #endregion
-        return
-      end
-      
-      # Prevent duplicate middleware insertion
-      if @@cors_middleware_added
+          return
+        end
+        
+        # Prevent duplicate middleware insertion
+        if @@cors_middleware_added
         # #region agent log
         begin
           File.open(log_path, 'a') do |f|
@@ -67,11 +67,11 @@ module DiscourseLexiconPlugin
         rescue => e
         end
         # #endregion
-        return
-      end
-      
-      # Comprehensive check to skip during migrations/rake tasks
-      skip_middleware = false
+          return
+        end
+        
+        # Comprehensive check to skip during migrations/rake tasks
+        skip_middleware = false
       skip_reason = nil
       
       begin
